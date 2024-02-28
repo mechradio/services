@@ -1,0 +1,33 @@
+name: Update ytlist.min
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'radio/ytlist.json'
+      - '.github/workflows/ytlist.min.yaml'
+      - 'radio/helpers/ytlist.min.py'
+
+jobs:
+    urls:
+        runs-on: ubuntu-latest
+        steps:
+            - name: Set up Python
+              uses: actions/setup-python@v5
+              with:
+                python-version: '3.x'
+
+            - name: Checkout repository
+              uses: actions/checkout@v4
+
+            - name: Run script
+              run: cd radio/helpers && python ytlist.min.py
+
+            - name: Commit and push changes
+              run: |
+                git config --global user.email "github-actions@users.noreply.github.com"
+                git config --global user.name "ytlist.min.json"
+                git add .
+                git commit -m "Update youtube list" || true
+                git push || true

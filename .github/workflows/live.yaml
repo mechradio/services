@@ -1,0 +1,128 @@
+name: Live server / localhost.run
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 */5 * * *"
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: true
+
+jobs:
+  manager-0:
+    runs-on: ubuntu-latest
+    timeout-minutes: 21600 # Max 6h
+    steps:              
+      - name: Clone repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Clone services.url
+        uses: actions/checkout@v4
+        with:
+          path: 'manager/tmp/url'
+          ref: 'main'
+          repository: 'ai-radio-official/services.url'
+          token: ${{ secrets.GH_TOKEN }}
+          fetch-depth: 1
+          persist-credentials: true
+
+      - name: Start and expose manager
+        env:
+          AWS_TOKEN: ${{ secrets.AWS_TOKEN }}
+        working-directory: manager
+        run: |
+            pip install -r requirements.txt
+            git config --global user.email "github-actions@users.noreply.github.com"
+            git config --global user.name "Server Manager Bot"
+            ssh-keygen -t rsa -N "" -f ~/.ssh/id_rsa
+
+            gunicorn -w 1 --threads 100 manager:app &
+            python helpers/localhost.run.py &
+            ssh -o StrictHostKeyChecking=no -R 80:127.0.0.1:8000 localhost.run >  tmp/localhost.run.log
+  
+  radio-0:
+    runs-on: ubuntu-latest
+    timeout-minutes: 21600 # Max 6h
+    steps:              
+      - name: Clone repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Setup Ffmpeg
+        uses: FedericoCarboni/setup-ffmpeg@v3
+        id: setup-ffmpeg
+        continue-on-error: true
+
+      - name: Setup Ffmpeg fallback
+        if: steps.setup-ffmpeg.outcome == 'failure'
+        run: |
+          sudo apt update
+          sudo apt install ffmpeg
+  
+      - name: Install SSH key
+        uses: shimataro/ssh-key-action@v2
+        with:
+          key: ${{ secrets.SSH_KEY }}
+          known_hosts: ${{ secrets.SSH_KNOWN_HOSTS }}
+
+      - name: Start radio
+        env:
+          AWS_TOKEN: ${{ secrets.AWS_TOKEN }}
+        working-directory: radio
+        run: |
+            pip install -r requirements.txt
+            git config --global user.email "github-actions@users.noreply.github.com"
+            git config --global user.name "radio"
+
+            mkdir -p tmp
+            gunicorn -w 1 --threads 100 radio:app &
+            python helpers/localhost.run.py &
+            ssh -o StrictHostKeyChecking=no -R 80:127.0.0.1:8000 localhost.run >  tmp/localhost.run.log
+
+  downloader-0:
+    runs-on: ubuntu-latest
+    timeout-minutes: 21600 # Max 6h
+    steps:              
+      - name: Clone repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Setup Ffmpeg
+        uses: FedericoCarboni/setup-ffmpeg@v3
+        id: setup-ffmpeg
+        continue-on-error: true
+
+      - name: Setup Ffmpeg fallback
+        if: steps.setup-ffmpeg.outcome == 'failure'
+        run: |
+          sudo apt update
+          sudo apt install ffmpeg
+  
+      - name: Start downloader
+        env:
+          AWS_TOKEN: ${{ secrets.AWS_TOKEN }}
+        working-directory: downloader
+        run: |
+            pip install -r requirements.txt
+            git config --global user.email "github-actions@users.noreply.github.com"
+            git config --global user.name "radio"
+            ssh-keygen -t rsa -N "" -f ~/.ssh/id_rsa
+
+            mkdir -p tmp
+            gunicorn -w 1 --threads 100 downloader:app &
+            python helpers/localhost.run.py &
+            ssh -o StrictHostKeyChecking=no -R 80:127.0.0.1:8000 localhost.run >  tmp/localhost.run.log
